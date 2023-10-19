@@ -1,37 +1,151 @@
 import numpy as np
 import open3d as o3d
 import argparse
+import cv2
+import os
+from scipy.spatial.transform import Rotation
+from scipy.spatial import cKDTree
 
 
-def depth_image_to_point_cloud(rgb, depth):
+
+
+def depth_image_to_point_cloud(rgb, depth, z_threshold):
     # TODO: Get point cloud from rgb and depth image 
-    raise NotImplementedError
+    H, W, focal, depth_scale = 512, 512, 256, 1000
+    v, u = np.mgrid[0:H, 0:W]
+    pcd = o3d.geometry.PointCloud()
+
+    z = depth[:, :, 0].astype(np.float32) / 255 * (-10)  #convert depth map to meters
+    x = (u - W*.5) * z / focal
+    y = (v - H*.5) * z / focal
+    # pcd_array = np.concatenate([np.dstack((x, y, z)), rgb[:, :, ::-1]], 2)
+    # pcd_array.reshape(-1, 6)
+
+    points = np.stack((x, y, z), axis=-1).reshape(-1, 3)
+    rgbs = (rgb[:, :, [2, 1, 0]].astype(np.float32) / 255).reshape(-1, 3)
+
+
+    valid = points[:, 2] <= z_threshold
+    points = points[valid, :]
+    rgbs = rgbs[valid, :]
+
+    pcd.points = o3d.utility.Vector3dVector(points)
+    pcd.colors = o3d.utility.Vector3dVector(rgbs)
+    # raise NotImplementedError
     return pcd
 
 
 def preprocess_point_cloud(pcd, voxel_size):
     # TODO: Do voxelization to reduce the number of points for less memory usage and speedup
-    raise NotImplementedError
-    return pcd_down
+    pcd_down = pcd.voxel_down_sample(voxel_size)
+
+    radius_normal = voxel_size * 2
+    pcd_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
+
+    radius_feature = voxel_size * 5
+    pcd_fpfh = o3d.pipelines.registration.compute_fpfh_feature(pcd_down, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
+
+    # raise NotImplementedError
+    return pcd_down, pcd_fpfh
 
 
 def execute_global_registration(source_down, target_down, source_fpfh,
                                 target_fpfh, voxel_size):
-    raise NotImplementedError
-    return result
+    distance_threshold = voxel_size * 1.5
+    result = o3d.pipelines.registration.registration_ransac_based_on_feature_matching(
+        source_down, target_down, source_fpfh, target_fpfh, True, 
+        distance_threshold,
+        o3d.pipelines.registration.TransformationEstimationPointToPoint(False),
+        3,
+        [
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnEdgeLength(
+                0.9),
+            o3d.pipelines.registration.CorrespondenceCheckerBasedOnDistance(
+                distance_threshold)
+        ], 
+        o3d.pipelines.registration.RANSACConvergenceCriteria(100000, 0.999)
+    )
+    
+    # raise NotImplementedError
+    return result.transformation
 
+def execute_fast_global_registration(source_down, target_down, source_fpfh, target_fpfh, voxel_size):
+    distance_threshold = voxel_size * 1.5
+    result = o3d.pipelines.registration.registration_fgr_based_on_feature_matching(
+        source_down, target_down, source_fpfh, target_fpfh,
+        o3d.pipelines.registration.FastGlobalRegistrationOption(
+            maximum_correspondence_distance=distance_threshold
+        )
+    )
+    return result.transformation
 
 def local_icp_algorithm(source_down, target_down, trans_init, threshold):
     # TODO: Use Open3D ICP function to implement
-    raise NotImplementedError
-    return result
+    result = o3d.pipelines.registration.registration_icp(
+        source_down, target_down, threshold, trans_init,
+        o3d.pipelines.registration.TransformationEstimationPointToPlane(),
+        # o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=10000)
+    )
+
+    # raise NotImplementedError
+    return result.transformation
 
 
-def my_local_icp_algorithm(source_down, target_down, trans_init, voxel_size):
+def nearest_neighbor(source, target):
+    num_source = source.shape[0]
+    distances = np.zeros(num_source)
+    indices = np.zeros(num_source, dtype=int)
+
+    tree = cKDTree(source)
+    distances, indices = tree.query(target, k=1)
+
+    return distances, indices
+
+
+def my_local_icp_algorithm(source_down, target_down, trans_init, voxel_size, max_iters):
     # TODO: Write your own ICP function
-    raise NotImplementedError
-    return result
+    trans = trans_init.copy()
+    source_points = np.asarray(source_down.points)
+    homo_source_points = np.hstack((source_points, np.ones((source_points.shape[0], 1))))
+    target_points = np.asarray(target_down.points)
 
+    for _ in range(max_iters):
+        # Find corresponding points
+        aligned_source_points = np.dot(homo_source_points, trans_init)[:, :3]
+        distance, indices = nearest_neighbor(aligned_source_points, target_points)
+        breakpoint()
+        source_corrsponse = source_points[indices]
+        # 
+        H = np.zeros((3,3))
+        # for i in range()
+
+
+
+    # raise NotImplementedError
+    # return result
+
+
+def get_point_cloud_list(args, z_threshold):
+    point_cloud_list = []
+    item_len = len(os.listdir(f"{args.data_root}/depth"))
+
+    for i in range(1, item_len+1):
+        depth = cv2.imread(f"{args.data_root}/depth/{i}.png")
+        rgb = cv2.imread(f"{args.data_root}/rgb/{i}.png")
+        
+        pcd = depth_image_to_point_cloud(rgb, depth, z_threshold)
+        point_cloud_list.append(pcd)
+    
+    return point_cloud_list
+
+def preprocess(point_cloud_list, voxel_size):
+    pcd_down_list = []
+    pcd_feature_list = []
+    for pcd in point_cloud_list:
+        pcd_down, pcd_feature = preprocess_point_cloud(pcd, voxel_size)
+        pcd_down_list.append(pcd_down)
+        pcd_feature_list.append(pcd_feature)
+    return pcd_down_list, pcd_feature_list
 
 def reconstruct(args):
     # TODO: Return results
@@ -44,8 +158,35 @@ def reconstruct(args):
             trans = my_local_icp_algorithm()
         ...
     """
-    raise NotImplementedError
-    return result_pcd, pred_cam_pos
+    # init pred_cam_pos_list
+    pred_cam_pose = [np.identity(4)]
+    # get point cloud list
+    z_threshold = 80 / 255 * 10
+    pcd_list = get_point_cloud_list(args, z_threshold=z_threshold)
+    # preprocess 
+    voxel_size = 0.07
+    pcd_down_list, pcd_fpfh_list = preprocess(pcd_list, voxel_size=voxel_size)
+    # 
+    # breakpoint()
+    for i in range(1, len(pcd_list)):
+        print(i)
+        pcd_down_source, pcd_down_target = pcd_down_list[i], pcd_down_list[i-1]
+        pcd_fpfh_source, pcd_fpfh_target = pcd_fpfh_list[i], pcd_fpfh_list[i-1]
+        # global registration
+        init_trans = execute_global_registration(pcd_down_source, pcd_down_target, pcd_fpfh_source, pcd_fpfh_target, voxel_size=voxel_size)
+        # init_trans = execute_fast_global_registration(pcd_down_source, pcd_down_target, pcd_fpfh_source, pcd_fpfh_target, voxel_size=voxel_size)
+        # local registration
+        if args.version == 'open3d':
+            trans = local_icp_algorithm(pcd_down_source, pcd_down_target, init_trans, threshold=voxel_size*0.4)
+        elif args.version == 'my_icp':
+            trans = my_local_icp_algorithm(pcd_down_source, pcd_down_target, init_trans, voxel_size=voxel_size, max_iters=100)
+        # 
+        pred_cam_pose.append(pred_cam_pose[i-1] @ trans)
+    # 
+    for i in range(len(pcd_list)):
+        pcd_list[i].transform(pred_cam_pose[i])
+
+    return pcd_list, np.array(pred_cam_pose)
 
 
 if __name__ == '__main__':
@@ -64,14 +205,37 @@ if __name__ == '__main__':
     '''
     Hint: Follow the steps on the spec
     '''
-    result_pcd, pred_cam_pos = reconstruct()
+    result_pcd, pred_cam_pose = reconstruct(args)
+    # rmove roof
+    for i in range(len(result_pcd)):
+        points = np.asarray(result_pcd[i].points)
+        rgbs = np.asarray(result_pcd[i].colors)
+        valid = (points[:, 1] <= 0.33)
+        points, rgbs = points[valid], rgbs[valid]
+
+        result_pcd[i].points = o3d.utility.Vector3dVector(points[:, 0:3])
+        result_pcd[i].colors = o3d.utility.Vector3dVector(rgbs[:, 0:3])
+        
+
 
     # TODO: Calculate and print L2 distance
     '''
     Hint: Mean L2 distance = mean(norm(ground truth - estimated camera trajectory))
     '''
-    print("Mean L2 distance: ", )
+    gt_cam_pose_7d = np.load(f'{args.data_root}/GT_pose.npy')
+    gt_cam_pose = np.tile(np.eye(4), (gt_cam_pose_7d.shape[0], 1, 1))
+    gt_cam_pose[:, 0:3, 0:3] = Rotation.from_quat(gt_cam_pose_7d[:, 3:7]).as_matrix()
+    gt_cam_pose[:, 0:3, 3] = gt_cam_pose_7d[:, 0:3]
+    # breakpoint()
+    gt_cam_pose = np.tile(np.linalg.inv(gt_cam_pose[[0]]), (gt_cam_pose.shape[0], 1, 1)) @ gt_cam_pose
+    gt_cam_position = gt_cam_pose[:, 0:3, 3]
+    gt_cam_position[:, 0] = -gt_cam_position[:, 0]
+    gt_cam_position[:, 2] = -gt_cam_position[:, 2]
+    pred_cam_position = pred_cam_pose[:, 0:3, 3]
 
+    
+    print("Mean L2 distance: ", np.mean(np.linalg.norm(gt_cam_pose - pred_cam_pose)))
+    # breakpoint()
     # TODO: Visualize result
     '''
     Hint: Sould visualize
@@ -79,4 +243,24 @@ if __name__ == '__main__':
     2. Red line: estimated camera pose
     3. Black line: ground truth camera pose
     '''
-    o3d.visualization.draw_geometries()
+    # breakpoint()
+    edges = [[i, i+1] for i in range(gt_cam_pose.shape[0] - 1)]
+    gt_color = [[0, 0, 0] for i in range(len(edges))]
+    pred_color = [[1, 0, 0] for i in range(len(edges))]
+
+    gt_line_set = o3d.geometry.LineSet(
+        points = o3d.utility.Vector3dVector(gt_cam_position),
+        lines = o3d.utility.Vector2iVector(edges)
+    )
+    gt_line_set.colors = o3d.utility.Vector3dVector(gt_color)
+
+    pred_line_set = o3d.geometry.LineSet(
+        points = o3d.utility.Vector3dVector(pred_cam_position),
+        lines = o3d.utility.Vector2iVector(edges)
+    )
+    pred_line_set.colors = o3d.utility.Vector3dVector(pred_color)
+
+
+    o3d.visualization.draw_geometries(result_pcd+[gt_line_set, pred_line_set])
+
+    # o3d.visualization.draw_geometries()
