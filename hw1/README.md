@@ -8,3 +8,16 @@ Spec: [Google Docs](https://docs.google.com/document/d/1whwLunr64Q5aqhjNhRfl7udZ
 In your original dpm-f23 directory, `git pull` to get new `hw1` directory.
 
 As for replica dataset, you can use the same one in `hw0`.
+
+## Run my code 
+```
+# bev 
+python bev.py
+
+# reconstruction
+# k is floor number
+python load.py -f {k}
+python reconstruction.py -f {k} -v open3d
+python reconstruction.py -f {k} -v my_icp
+
+```

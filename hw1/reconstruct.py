@@ -5,6 +5,9 @@ import cv2
 import os
 from scipy.spatial.transform import Rotation
 from scipy.spatial import cKDTree
+from scipy.optimize import minimize
+from random import sample
+import time
 
 
 
@@ -43,7 +46,8 @@ def preprocess_point_cloud(pcd, voxel_size):
     pcd_down.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=radius_normal, max_nn=30))
 
     radius_feature = voxel_size * 5
-    pcd_fpfh = o3d.pipelines.registration.compute_fpfh_feature(pcd_down, o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
+    pcd_fpfh = o3d.pipelines.registration.compute_fpfh_feature(pcd_down, 
+                                                               o3d.geometry.KDTreeSearchParamHybrid(radius=radius_feature, max_nn=100))
 
     # raise NotImplementedError
     return pcd_down, pcd_fpfh
@@ -92,37 +96,138 @@ def local_icp_algorithm(source_down, target_down, trans_init, threshold):
 
 
 def nearest_neighbor(source, target):
-    num_source = source.shape[0]
-    distances = np.zeros(num_source)
-    indices = np.zeros(num_source, dtype=int)
-
-    tree = cKDTree(source)
-    distances, indices = tree.query(target, k=1)
+    tree = cKDTree(target)
+    distances, indices = tree.query(source, k=1)
 
     return distances, indices
 
 
-def my_local_icp_algorithm(source_down, target_down, trans_init, voxel_size, max_iters):
+def my_local_icp_algorithm(source_down, target_down, trans_init, voxel_size, max_iters, convergence_threshold):
     # TODO: Write your own ICP function
     trans = trans_init.copy()
-    source_points = np.asarray(source_down.points)
-    homo_source_points = np.hstack((source_points, np.ones((source_points.shape[0], 1))))
-    target_points = np.asarray(target_down.points)
+    trans_update = trans_init
+    # source_down = source_down.transform(trans)
+    # sample from normal space
+    source_normal = np.asarray(source_down.normals)
+    target_noraml = np.asarray(target_down.normals)
+    num_sample_points = min(len(source_normal), len(target_noraml))
+    source_sampled_indices = sample(range(len(source_normal)), num_sample_points)
+    target_sampled_indices = sample(range(len(target_noraml)), num_sample_points)    
+    # sampled_points
+    source_points = np.asarray(source_down.points)[source_sampled_indices]
+    target_points = np.asarray(target_down.points)[target_sampled_indices]
+    source_normal = source_normal[source_sampled_indices]
+    
+    #
+    # Transform the source with current transformation matrix
+    source_points_homo = np.hstack((source_points, np.ones((source_points.shape[0], 1))))
+    source_points = np.dot(source_points_homo, trans_update.T)[:, :3]
+    
+    # Find data association (corresponding points)
+    distances, indices = nearest_neighbor(source_points, target_points)
+    
+    
+    for iter in range(max_iters):
+        error = np.mean((source_points - target_points[indices])**2) # want the error to be minimized
+        print("error: ", error)
+        
+        # compute the optimal solution of the transformation from estimated data association
+        source_center = np.mean(source_points, axis=0)
+        target_center = np.mean(target_points[indices], axis=0)
+        source_center_diff = source_points - source_center # p' = {p - mean}
+        target_center_diff = target_points[indices] - target_center # x' = {x - x_mean} 
+        W = np.matmul(target_center_diff.T, source_center_diff)
+        U, _, VT = np.linalg.svd(W)
+        optimal_rotation = U @ VT
+        if np.linalg.det(optimal_rotation) < 0: # reflection case
+            VT[:, :] *= -1
+            optimal_rotation = U @ VT
 
-    for _ in range(max_iters):
-        # Find corresponding points
-        aligned_source_points = np.dot(homo_source_points, trans_init)[:, :3]
-        distance, indices = nearest_neighbor(aligned_source_points, target_points)
+        optimal_translation = target_center - np.dot(source_center, optimal_rotation.T)
+        
+        trans_update = np.eye(4)
+        trans_update[:3, :3] = optimal_rotation
+        trans_update[:3, 3] = optimal_translation
+        # Update the current transformation
+        trans = trans_update @ trans       
+        
+        # Check for convergence 
+        if np.linalg.norm(trans_update - np.identity(4)) < convergence_threshold:
+            break 
+        
+        # Transform the source with current transformation matrix
+        source_points_homo = np.hstack((source_points, np.ones((source_points.shape[0], 1))))
+        source_points = np.dot(source_points_homo, trans_update.T)[:, :3]
+    print("final iter: ", iter)
+    
+    return trans_init
+
+def point2plane_error(trans, source_points, target_points, target_normal):
+    rotation = trans[:3, :3]
+    translation = trans[:3, 3]
+    transformed_source = np.dot(source_points, rotation.T) + translation
+    
+    error = np.sum(np.sum((target_points - source_points)* target_normal, axis=1)**2)
+    return error
+        
+def my_local_icp_algorithm_point2plane(source_down, target_down, trans_init, voxel_size, max_iters, convergence_threshold):
+    # TODO: Write your own ICP function
+    trans = trans_init.copy()
+    # sample from normal space
+    source_normal = np.asarray(source_down.normals)
+    target_normal = np.asarray(target_down.normals)
+    num_sample_points = min(len(source_normal), len(target_normal))
+    source_sampled_indices = sample(range(len(source_normal)), num_sample_points)
+    target_sampled_indices = sample(range(len(target_normal)), num_sample_points)
+    # sampled_points
+    source_points = np.asarray(source_down.points)[source_sampled_indices]
+    target_points = np.asarray(target_down.points)[target_sampled_indices]
+    source_normal = source_normal[source_sampled_indices]
+    target_normal = target_normal[target_sampled_indices]
+    
+    for iter in range(max_iters):
+        # # Transform the source with current transformation matrix
+        # source_points_homo = np.hstack((source_points, np.ones((source_points.shape[0], 1))))
+        # source_points = np.dot(source_points_homo, trans.T)[:, :3]
+        
+        
+        # Find data association (corresponding points)
+        distances, indices = nearest_neighbor(source_points, target_points)
+        # error = np.sum(np.sum((target_points[indices] - source_points)* target_normal[indices], axis=1)**2)
+        # print("error: ", error)
+        # breakpoint()
+        # compute the optimal solution of the transformation from estimated data association
+        initial_guess = np.identity(3)
+        initial_guess = np.append(initial_guess, [0, 0, 0])
+        result = minimize(point2plane_error, initial_guess, args=(source_points, target_points[indices], target_normal[indices]), method='trust-ncg')
         breakpoint()
-        source_corrsponse = source_points[indices]
-        # 
-        H = np.zeros((3,3))
-        # for i in range()
-
-
-
-    # raise NotImplementedError
-    # return result
+            
+            
+        
+        
+        
+        #
+        
+        
+        
+        U, _, VT = np.linalg.svd(A_sum)
+        optimal_rotation = U @ VT
+        optimal_translation = np.dot(b_sum, U)
+        
+        trans_update = np.eye(4)
+        trans_update[:3, :3] = optimal_rotation
+        trans_update[:3, 3] = optimal_translation
+        # Update the current transformation
+        trans = trans_update @ trans       
+        
+        # Check for convergence 
+        if np.linalg.norm(trans_update - np.identity(4)) < convergence_threshold:
+            break 
+        # breakpoint()
+    print("final iter: ", iter)
+    
+    return trans
+    
 
 
 def get_point_cloud_list(args, z_threshold):
@@ -173,16 +278,19 @@ def reconstruct(args):
         pcd_down_source, pcd_down_target = pcd_down_list[i], pcd_down_list[i-1]
         pcd_fpfh_source, pcd_fpfh_target = pcd_fpfh_list[i], pcd_fpfh_list[i-1]
         # global registration
-        init_trans = execute_global_registration(pcd_down_source, pcd_down_target, pcd_fpfh_source, pcd_fpfh_target, voxel_size=voxel_size)
-        # init_trans = execute_fast_global_registration(pcd_down_source, pcd_down_target, pcd_fpfh_source, pcd_fpfh_target, voxel_size=voxel_size)
+        init_trans = execute_global_registration(pcd_down_source, pcd_down_target, 
+                                                 pcd_fpfh_source, pcd_fpfh_target, voxel_size=voxel_size)
+        # init_trans = execute_fast_global_registration(pcd_down_source, pcd_down_target, 
+        #                                               pcd_fpfh_source, pcd_fpfh_target, voxel_size=voxel_size)
         # local registration
         if args.version == 'open3d':
             trans = local_icp_algorithm(pcd_down_source, pcd_down_target, init_trans, threshold=voxel_size*0.4)
         elif args.version == 'my_icp':
-            trans = my_local_icp_algorithm(pcd_down_source, pcd_down_target, init_trans, voxel_size=voxel_size, max_iters=100)
-        # 
+            trans = my_local_icp_algorithm(pcd_down_source, pcd_down_target, init_trans, 
+                                           voxel_size=voxel_size, max_iters=100, convergence_threshold=1e-6)
+        
         pred_cam_pose.append(pred_cam_pose[i-1] @ trans)
-    # 
+    
     for i in range(len(pcd_list)):
         pcd_list[i].transform(pred_cam_pose[i])
 
@@ -190,6 +298,8 @@ def reconstruct(args):
 
 
 if __name__ == '__main__':
+    start_time = time.time()
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--floor', type=int, default=1)
     parser.add_argument('-v', '--version', type=str, default='my_icp', help='open3d or my_icp')
@@ -210,7 +320,7 @@ if __name__ == '__main__':
     for i in range(len(result_pcd)):
         points = np.asarray(result_pcd[i].points)
         rgbs = np.asarray(result_pcd[i].colors)
-        valid = (points[:, 1] <= 0.33)
+        valid = (points[:, 1] <= 0.25)
         points, rgbs = points[valid], rgbs[valid]
 
         result_pcd[i].points = o3d.utility.Vector3dVector(points[:, 0:3])
@@ -233,6 +343,9 @@ if __name__ == '__main__':
     gt_cam_position[:, 2] = -gt_cam_position[:, 2]
     pred_cam_position = pred_cam_pose[:, 0:3, 3]
 
+    end_time = time.time()
+    execution_time = end_time - start_time
+    print(f"Execution time: {execution_time:.6f} seconds")
     
     print("Mean L2 distance: ", np.mean(np.linalg.norm(gt_cam_pose - pred_cam_pose)))
     # breakpoint()
