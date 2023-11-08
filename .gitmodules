@@ -7,3 +7,5 @@
 [submodule "hw2/semantic-segmentation-pytorch"]
 	path = hw2/semantic-segmentation-pytorch
 	url = https://github.com/CSAILVision/semantic-segmentation-pytorch.git
+[submodule "semantic-segmentation-pytorch/"]
+	url = https://github.com/kkennethwu/semantic-segmentation-pytorch.git
