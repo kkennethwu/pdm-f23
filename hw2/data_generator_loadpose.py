@@ -91,11 +91,6 @@ class Generator:
     """
     def __init__(self, path):
         self._dataset_path = os.path.normpath(path)
-        # fill the scene name you want to collect data from, and set the rooms
-        # self._scenes = ["apartment_1", "apartment_2",
-        #                 "frl_apartment_0", "frl_apartment_1",
-        #                 "hotel_0", "office_0", "office_1",
-        #                 "room_0", "room_1", "room_2"]
         self._scenes = ["apartment_0"]
         
         self._height = 512
@@ -240,19 +235,21 @@ class Generator:
             
             # generate data for each room
             
-            gt_poses = np.load(f'../hw1/data_collection/second_floor/GT_pose.npy')
+            gt_poses = np.load(f'../hw1/data_collection/{out_folder}/GT_pose.npy')
             total_frames = len(gt_poses)
             for pose in gt_poses:
                 agent = simulator.get_agent(0)
                 agent_state = agent.get_state()
                 random_state = AgentState()
-                
+                # Translation is a 3 dimensional vector
                 random_state.position[0] = pose[0]
                 random_state.position[1] = pose[1]
                 random_state.position[2] = pose[2]
-                random_state.rotation = (quat_from_angle_axis(pose[3], np.array([0,1,0]))*
-                                            quat_from_angle_axis(pose[4], np.array([1,0,0]))*
-                                            quat_from_angle_axis(pose[5], np.array([0,0,1])))
+                # Rotation is a quaternion
+                random_state.rotation.w = pose[3]
+                random_state.rotation.x = pose[4]
+                random_state.rotation.y = pose[5]
+                random_state.rotation.z = pose[6]
                 
                 list(agent_state.position)+list(agent_state.rotation.components)
                 agent_state.sensor_states = {}
@@ -260,7 +257,8 @@ class Generator:
                 
                 # do the actual rendering
                 observations = simulator.get_sensor_observations()                   
-                self.save_observations(observations, current_frame, out_folder, split_name, scene_semantic_dict, scene)                    
+                self.save_observations(observations, current_frame, out_folder, 
+                                       split_name, scene_semantic_dict, scene)                    
                 
                 print(f'Saved image {current_frame+1}/{total_frames}')
                 current_frame += 1
@@ -282,15 +280,15 @@ def main():
     
     # adjust [frames_per_room] to collect arbitrary number of  images
     generator = Generator(path=args.dataset)
-    generator.generate(out_folder=args.output, 
-                       split_name='train',
-                       frames_per_room=1)
+    # generator.generate(out_folder=args.output, 
+    #                    split_name='train',
+    #                    frames_per_room=1)
     generator.generate(out_folder=args.output, 
                        split_name='val',
                        frames_per_room=1)
-    generator.generate(out_folder=args.output, 
-                       split_name='test',
-                       frames_per_room=1)
+    # generator.generate(out_folder=args.output, 
+    #                    split_name='test',
+    #                    frames_per_room=1)
     
 if __name__ == "__main__":
     main()

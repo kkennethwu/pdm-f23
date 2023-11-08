@@ -92,10 +92,10 @@ class Generator:
     def __init__(self, path):
         self._dataset_path = os.path.normpath(path)
         # fill the scene name you want to collect data from, and set the rooms
-        self._scenes = ["apartment_1", "apartment_2",
-                        "frl_apartment_0", "frl_apartment_1",
-                        "hotel_0", "office_0", "office_1",
-                        "room_0", "room_1", "room_2"]
+        # self._scenes = ["apartment_1", "apartment_2",
+        #                 "frl_apartment_0", "frl_apartment_1",
+        #                 "hotel_0", "office_0", "office_1",
+        #                 "room_0", "room_1", "room_2"]
         # self._scenes = ["apartment_0"]
         
         self._height = 512
@@ -215,6 +215,14 @@ class Generator:
         
             
     def generate(self, out_folder, split_name, frames_per_room=100):
+        if out_folder == "dataset1":
+            self._scenes = ["apartment_1", "apartment_2",
+                        "frl_apartment_0", "frl_apartment_1",
+                        "hotel_0", "office_0", "office_1",
+                        "room_0", "room_1", "room_2"]
+        elif out_folder == "dataset2":
+            self._scenes = ["apartment_0"]
+        
         
         settings = {}
         print(out_folder)
@@ -277,7 +285,7 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, help="Folder containing Replica dataset")
-    parser.add_argument("--output", type=str, help="Output folder")
+    parser.add_argument("--output", type=str, choices=['dataset1', 'dataset2'], help="output folder name")
     args = parser.parse_args()
     
     # adjust [frames_per_room] to collect arbitrary number of  images
