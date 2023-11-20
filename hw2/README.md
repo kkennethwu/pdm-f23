@@ -36,10 +36,10 @@ wget http://sceneparsing.csail.mit.edu/model/pytorch/ade20k-resnet50dilated-ppm_
 ### Get dataset1, dataset2 for training
 ```
 # In hw2/
-python data_generator_loadpose.py --dataset replica_v1/ --output dataset1
+python data_generator.py --dataset replica_v1/ --output dataset1
 cp -r dataset1 semantic-segmentation-pytorch/data
 
-python data_generator_loadpose.py --dataset replica_v1/ --output dataset2
+python data_generator.py --dataset replica_v1/ --output dataset2
 cp -r dataset2 semantic-segmentation-pytorch/data
 ```
 

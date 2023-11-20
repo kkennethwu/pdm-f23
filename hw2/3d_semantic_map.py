@@ -267,13 +267,6 @@ def visualize(result_pcd):
     for i, pcd in enumerate(result_pcd):
         vis.add_geometry(pcd)
     
-    # Set the view control to look at the top view
-    view_control = vis.get_view_control()
-    # set the birds eye view as the default view
-    view_control.rotate(0, 2000)
-    
-    
-    
     # # Wait for the visualization window to be fully rendered
     vis.update_renderer()
     # Capture the top view as an image
@@ -326,7 +319,9 @@ if __name__ == '__main__':
         result_pcd[i].transform(rot_bev2)
     
     # visualize
-    o3d.visualization.draw_geometries(result_pcd)
+    # o3d.visualization.draw_geometries(result_pcd)
+    
+    visualize(result_pcd)
     
     
     
