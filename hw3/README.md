@@ -5,3 +5,10 @@ Spec: [Google Docs](https://docs.google.com/document/d/10vEbFE372HeNocKmyQws_-5D
 
 ## Preparation
 In your original dpm-f23 directory, `git pull` to get new `hw3` directory.
+
+## Run the code
+```
+python load-2.py
+# after down
+python save_to_git.py
+```
