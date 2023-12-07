@@ -7,17 +7,29 @@ import cv2
 import json
 from get_map import get_coordinate_transform_matrix
 from RRT import get_path
+import time
+from scipy.spatial.transform import Rotation as R
+import math
+import os
+from PIL import Image
+from get_semantic_id import get_semantic_id
+from save_to_gif import save_to_gif
 
-# TODO: 1. get coordinate transform matrix from pixel to habitat
+turn_deg = 2.0
+move_forward_length = 0.05
+# 1. get coordinate transform matrix from pixel to habitat
 trans = get_coordinate_transform_matrix()
 print("transformation matrix: ", trans)
-# TODO: 2. get path by RRT
-path, target_point = get_path()
+# 2. get path by RRT
+path, target_point, target_object, target_color = get_path()
+target_semantic_id = get_semantic_id(target_object)
+
 print("path: ", path)
-homo_path = np.matmul(np.hstack((path, np.ones((path.shape[0], 1)))), trans.T) # x, z
-homo_target_point = np.matmul(np.append(target_point, 1), trans.T) # x, z
-print("starting point: ", homo_path[0])
-# breakpoint()
+print("target_point: ", target_point)
+_3D_path = np.matmul(np.hstack((path, np.ones((path.shape[0], 1)))), trans.T) # x, z
+_3D_target_point = np.matmul(np.append(target_point, 1), trans.T) # x, z
+print("3D starting point: ", _3D_path[0])
+print("3D target point: ", _3D_target_point)
 
 
 # This is the scene we are going to load.
@@ -122,17 +134,17 @@ def make_simple_cfg(settings):
 
     agent_cfg.sensor_specifications = [rgb_sensor_spec, depth_sensor_spec, semantic_sensor_spec]
     ##################################################################
-    ### change the move_forward length or rotate angle
+    ### change the move_forward length or rotate angle             ###
     ##################################################################
     agent_cfg.action_space = {
         "move_forward": habitat_sim.agent.ActionSpec(
-            "move_forward", habitat_sim.agent.ActuationSpec(amount=0.01) # 0.01 means 0.01 m
+            "move_forward", habitat_sim.agent.ActuationSpec(amount=move_forward_length) # 0.01 means 0.01 m
         ),
         "turn_left": habitat_sim.agent.ActionSpec(
-            "turn_left", habitat_sim.agent.ActuationSpec(amount=1.0) # 1.0 means 1 degree
+            "turn_left", habitat_sim.agent.ActuationSpec(amount=turn_deg) # 1.0 means 1 degree
         ),
         "turn_right": habitat_sim.agent.ActionSpec(
-            "turn_right", habitat_sim.agent.ActuationSpec(amount=1.0)
+            "turn_right", habitat_sim.agent.ActuationSpec(amount=turn_deg)
         ),
     }
 
@@ -148,8 +160,8 @@ agent = sim.initialize_agent(sim_settings["default_agent"])
 
 # Set agent state
 agent_state = habitat_sim.AgentState()
-# agent_state.position = np.array([0.0, 0.0, 0.0])  # agent in world space
-agent_state.position = np.array([homo_path[0][0], 0.0, homo_path[0][1]])
+agent_state.position = np.array([0.0, 0.0, 0.0])  # agent in world space
+agent_state.position = np.array([_3D_path[-1][0], 0.0, _3D_path[-1][1]]) # starting point
 agent.set_state(agent_state)
 
 # obtain the default, discrete actions that an agent can perform
@@ -171,42 +183,97 @@ print(" f for finish and quit the program")
 print("#############################")
 
 
-def navigateAndSee(action=""):
+def navigateAndSee(action="", frame=None):
     if action in action_names:
         observations = sim.step(action)
-        #print("action: ", action)
-
-        cv2.imshow("RGB", transform_rgb_bgr(observations["color_sensor"]))
-        #cv2.imshow("depth", transform_depth(observations["depth_sensor"]))
-        cv2.imshow("semantic", transform_semantic(id_to_label[observations["semantic_sensor"]]))
+        
+        if frame % 5 == 0:
+            semantic_id = id_to_label[observations["semantic_sensor"]]
+            target_id_region = np.where(semantic_id == target_semantic_id)  
+            semamtic_img = transform_semantic(id_to_label[observations["semantic_sensor"]])
+            
+            
+            rgb_img = transform_rgb_bgr(observations["color_sensor"])
+            # add a transparent mask to highlight the target object
+            red = np.full(rgb_img.shape, (0, 0, 255), dtype=np.uint8)
+            if len(target_id_region[0]) > 0:
+                blend_img = cv2.addWeighted(rgb_img, 0.5, red, 0.5, 0)
+                rgb_img[target_id_region] = blend_img[target_id_region]
+                
+                
+            
+            cv2.imwrite(f"path_{target_object}/semantic_{frame}.jpg", semamtic_img)
+            cv2.imwrite(f"path_{target_object}/RGB_{frame}.jpg", rgb_img)
         agent_state = agent.get_state()
         sensor_state = agent_state.sensor_states['color_sensor']
-        print("camera pose: x y z rw rx ry rz")
-        print(sensor_state.position[0],sensor_state.position[1],sensor_state.position[2],  sensor_state.rotation.w, sensor_state.rotation.x, sensor_state.rotation.y, sensor_state.rotation.z)
+        # print("camera pose: x y z rw rx ry rz")
+        # print(sensor_state.position[0],sensor_state.position[1],sensor_state.position[2],  sensor_state.rotation.w, sensor_state.rotation.x, sensor_state.rotation.y, sensor_state.rotation.z)
 
 
 
 
-action = "move_forward"
-navigateAndSee(action)
 
-while True:
-    keystroke = cv2.waitKey(0)
-    if keystroke == ord(FORWARD_KEY):
-        action = "move_forward"
-        navigateAndSee(action)
-        print("action: FORWARD")
-    elif keystroke == ord(LEFT_KEY):
-        action = "turn_left"
-        navigateAndSee(action)
-        print("action: LEFT")
-    elif keystroke == ord(RIGHT_KEY):
-        action = "turn_right"
-        navigateAndSee(action)
-        print("action: RIGHT")
-    elif keystroke == ord(FINISH):
-        print("action: FINISH")
-        break
-    else:
-        print("INVALID KEY")
-        continue
+def rotate_camera_to_direction(direction, i): # direction [x, z]
+    sensor_state = agent.get_state().sensor_states['color_sensor']
+    current_yaw = math.atan2(2.0 * (sensor_state.rotation.w * sensor_state.rotation.y + 
+                                    sensor_state.rotation.x * sensor_state.rotation.z), 
+                             1.0 - 2.0 * (sensor_state.rotation.y**2 + sensor_state.rotation.z**2))
+    desired_yaw = -math.atan2(direction[0], -direction[1])
+    
+    rotation_diff = desired_yaw - current_yaw
+    # Normalize the rotation difference to be within -pi to pi range
+    
+    print("current yaw: ", np.degrees(current_yaw))
+    print("desired yaw: ", np.degrees(desired_yaw))
+    print("rotation_diff: ", np.degrees(rotation_diff))
+    # breakpoint()
+    if rotation_diff > math.pi:
+        rotation_diff -= 2 * math.pi
+    elif rotation_diff < -math.pi:
+        rotation_diff += 2 * math.pi
+    rotation_diff_deg = np.degrees(rotation_diff)
+
+    turn_action = "turn_left" if rotation_diff_deg > 0 else "turn_right"
+    return turn_action, abs(rotation_diff_deg)
+
+
+if not os.path.exists(f"path_{target_object}"):
+    os.mkdir(f"path_{target_object}")
+i = len(_3D_path)-1
+frame = 0
+while i > 0:
+    sensor_state = agent.get_state().sensor_states['color_sensor']
+    print(f"##### {len(_3D_path)-1-i}th Node #####")
+    print("sensor_state.position: ", sensor_state.position)
+    print("current path point: ", _3D_path[i])
+    print("next path point: ", _3D_path[i-1])
+    direction = np.array([_3D_path[i-1][0] - sensor_state.position[0], _3D_path[i-1][1] - sensor_state.position[2]]) # [x, z]
+    dir_length = np.linalg.norm(direction)
+    direction /= dir_length
+    
+    turn_action, rotation_diff_deg = rotate_camera_to_direction(direction, i)
+    
+    print(f"{turn_action}: {rotation_diff_deg} degree")
+    while(rotation_diff_deg > 0):
+        navigateAndSee(turn_action, frame=frame)
+        rotation_diff_deg -= turn_deg
+        frame+=1
+    print(f"move_forward: {dir_length}")
+    while(dir_length > 0):
+        navigateAndSee("move_forward", frame=frame)
+        dir_length -= move_forward_length
+        frame+=1
+    i -= 1
+print(f"##### Toward the target #####")
+sensor_state = agent.get_state().sensor_states['color_sensor']
+direction = np.array([_3D_target_point[0] - sensor_state.position[0], _3D_target_point[1] - sensor_state.position[2]]) # [x, z]
+dir_length = np.linalg.norm(direction)
+direction /= dir_length
+turn_action, rotation_diff_deg = rotate_camera_to_direction(direction, i=-1)
+print(f"{turn_action}: {rotation_diff_deg} degree")
+while(rotation_diff_deg > 0):
+    navigateAndSee(turn_action, frame=frame)
+    rotation_diff_deg -= turn_deg
+    frame+=1
+
+save_to_gif(object=target_object)
