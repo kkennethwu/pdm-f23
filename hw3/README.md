@@ -18,25 +18,9 @@ python load-2.py
 
 ## Results
 #### Task1: RRT path planning
-***cooktop***
+***cooktop & cushion & lamp***
 
-<img src="path_cooktop.png" alt="Description of the first image" width="30%"> 
-
-***cushion***
-
-<img src="path_cushion.png" alt="Description of the first image" width="30%"> 
-
-***lamp***
-
-<img src="path_lamp.png" alt="Description of the first image" width="30%"> 
-
-***rack***
-
-<img src="path_rack.png" alt="Description of the first image" width="30%"> 
-
-***stair***
-
-<img src="path_stair.png" alt="Description of the first image" width="30%">
+<img src="path_cooktop.png" alt="Description of the first image" width="30%"> <img src="path_cushion.png" alt="Description of the first image" width="30%"> <img src="path_lamp.png" alt="Description of the first image" width="30%"> 
 
 #### Task2: Robot Navigation
 ***cooktop and rack***
