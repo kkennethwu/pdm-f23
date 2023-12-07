@@ -29,6 +29,7 @@ wget http://sceneparsing.csail.mit.edu/model/pytorch/ade20k-resnet50dilated-ppm_
 ```
 
 ---
+***Please star or tag, if you refer to my implementations.***
 
 ## Quick Start
 #### Task1
@@ -128,4 +129,3 @@ python 3d_semantic_map.py -d 2 -f 2 --seg_gt False
 
 <img src="results2-1.png" alt="Description of the first image" width="40%"> <img src="results2-2.png" alt="Description of the first image" width="31%"> 
 
-***Please star or tag, if you refer my implementations.***
