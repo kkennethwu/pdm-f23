@@ -29,20 +29,15 @@ python reconstruction.py -f {1, 2} -v {my_icp, open3d}
 ---
 ## Results
 #### Task1
-<img src="before_projection1.png" alt="Description of the first image" width="23%">
-<img src="projection1.png" alt="Description of the first image" width="23%">
-<img src="before_projection2.png" alt="Description of the first image" width="23%">
-<img src="projection2.png" alt="Description of the first image" width="23%">
+<img src="before_projection1.png" alt="Description of the first image" width="23%"> <img src="projection1.png" alt="Description of the first image" width="23%"> <img src="before_projection2.png" alt="Description of the first image" width="23%"> <img src="projection2.png" alt="Description of the first image" width="23%">
 
 #### Task2
 **open3d ICP**
 
-<img src="open3d-1.png" alt="Description of the first image" width="40%"> 
-<img src="open3d-2.png" alt="Description of the first image" width="40%">
+<img src="open3d-1.png" alt="Description of the first image" width="40%">  <img src="open3d-2.png" alt="Description of the first image" width="40%">
 
 **my ICP**
 
-<img src="my_icp-1.png" alt="Description of the first image" width="40%">
-<img src="my_icp-2.png" alt="Description of the first image" width="40%">
+<img src="my_icp-1.png" alt="Description of the first image" width="40%"> <img src="my_icp-2.png" alt="Description of the first image" width="40%">
 
-* Please star or tag, if you refer my implementations.
+***Please star or tag, if you refer my implementations.***
