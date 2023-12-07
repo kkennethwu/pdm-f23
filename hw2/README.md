@@ -30,10 +30,9 @@ wget http://sceneparsing.csail.mit.edu/model/pytorch/ade20k-resnet50dilated-ppm_
 
 ---
 
-## Task1
-
-
-### Get dataset1, dataset2 for training
+## Quick Start
+#### Task1
+##### Get dataset1, dataset2 for training
 ```
 # In hw2/
 python data_generator.py --dataset replica_v1/ --output dataset1
@@ -43,7 +42,7 @@ python data_generator.py --dataset replica_v1/ --output dataset2
 cp -r dataset2 semantic-segmentation-pytorch/data
 ```
 
-### Get .odgt file for training
+##### Get .odgt file for training
 ```
 # In hw2/semantic-segmentation-pytorch
 cd semantic-segmentation-pytorch
@@ -52,7 +51,7 @@ python to_odgt.py --dataset 2
 
 ```
 
-### Training for dataset1, dataset2
+##### Training for dataset1, dataset2
 ```
 # In hw2/semantic-segmentation-pytorch
 python3 train.py --gpus 0 --cfg config/ade20k-mobilenetv2dilated-c1_deepsup_dataset1.yaml
@@ -61,16 +60,15 @@ python3 train.py --gpus 0 --cfg config/ade20k-mobilenetv2dilated-c1_deepsup_data
 cd ..
 ```
 
-### Change HW1 floor1/floor2 data from sementics to annotaions for eval
+##### Change HW1 floor1/floor2 data from sementics to annotaions for eval
 ```
 # In hw2/
 python data_generator_loadpose.py --dataset replica_v1/ --output first_floor
 
 python data_generator_loadpose.py --dataset replica_v1/ --output second_floor
-
 ```
 
-### get .odgt for eval
+##### get .odgt for eval
 ```
 # In hw2/semantic-segmentation-pytorch
 cd semantic-segmentation-pytorch
@@ -78,7 +76,7 @@ python to_odgt_for_eval.py --floor first_floor
 python to_odgt_for_eval.py --floor second_floor
 ```
 
-### Run eval_miltipro.py to evaluate the images you collected for HW1 for reconstruction
+##### Run eval_miltipro.py to evaluate the images you collected for HW1 for reconstruction
 
 ```
 # In hw2/semantic-segmentation-pytorch
@@ -97,12 +95,11 @@ python3 eval_multipro.py --gpus 0 --cfg config/ade20k-mobilenetv2dilated-c1_deep
 # ckpt/ade20k-mobilenetv2dilated-c1_deepsup_dataset1/floor2
 # ckpt/ade20k-mobilenetv2dilated-c1_deepsup_dataset2/floor1
 # ckpt/ade20k-mobilenetv2dilated-c1_deepsup_dataset2/floor2
-
 ```
 
-## Task2
+#### Task2
 
-### Run 3d semantic reconstruction
+##### Run 3d semantic reconstruction
 ```
 # copy the above data store in hw2/data_collection/dataset1/floor1
 # copy the above data store in hw2/data_collection/dataset1/floor2
@@ -118,7 +115,17 @@ python 3d_semantic_map.py -d 1 -f 1 --seg_gt False
 python 3d_semantic_map.py -d 1 -f 2 --seg_gt False
 python 3d_semantic_map.py -d 2 -f 1 --seg_gt False
 python 3d_semantic_map.py -d 2 -f 2 --seg_gt False
-
-
-
 ```
+
+---
+
+## Results
+#### Task1
+
+<img src="results1.png" alt="Description of the first image" width="80%">
+
+#### Task2
+
+<img src="results2-1.png" alt="Description of the first image" width="40%"> <img src="results2-2.png" alt="Description of the first image" width="31%"> 
+
+***Please star or tag, if you refer my implementations.***
