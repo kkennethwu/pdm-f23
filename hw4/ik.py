@@ -3,6 +3,7 @@ import numpy as np
 import math as m
 from scipy.spatial.transform import Rotation as R
 from scipy.linalg import pinv
+from scipy.optimize import leastsq
 
 # for simulator
 import pybullet as p
@@ -43,12 +44,15 @@ def pybullet_ik(robot_id, new_pose : list or tuple or np.ndarray,
     
     return joint_poses
 
+def residual_func(q, target_pose, base_pos):
+    current_pose, jacobian = your_fk(get_ur5_DH_params(), q, base_pos)
+    d_error = target_pose - current_pose
+    return d_error.flatten()
 
 def your_ik(robot_id, new_pose : list or tuple or np.ndarray, 
                 base_pos, max_iters : int=1000, stop_thresh : float=.001):
-
-
-
+    # IK: Only given the desired pose of the robot end effector, find the joint angles of the robot
+    # No closed-form solution, so you need to use iterative methods to solve.
     joint_limits = np.asarray([
             [-3*np.pi/2, -np.pi/2], # joint1
             [-2.3562, -1],           # joint2
@@ -73,6 +77,26 @@ def your_ik(robot_id, new_pose : list or tuple or np.ndarray,
     # -------------------------------------------------------------------------------- #
     
     #### your code ####
+    target_pose = np.array(new_pose) # 7D end effector target pose (position(x,y,z) quaternion(x,y,z,w))
+    # Method1: Pseudo Inverse Mthod
+    # step_rate = 0.01
+    # for iter in range(max_iters):
+    #     current_pose, jacobian = your_fk(get_ur5_DH_params(), tmp_q, base_pos)
+    #     d_error = target_pose - current_pose
+    #     if(np.linalg.norm(d_error) < stop_thresh):
+    #         break
+    #     # delta_joint = pseudo inverse of jacobian * delta end effector error
+    #     d_q = pinv(jacobian) @ d_error[:6] # When the degree is small, can omit the w in quaternion
+    #     tmp_q += d_q * step_rate
+    
+    # Method2: Bonus: Damped Least Square Method
+    for iter in range(max_iters):
+        current_pose, jacobian = your_fk(get_ur5_DH_params(), tmp_q, base_pos)
+        d_error = target_pose - current_pose
+        if(np.linalg.norm(d_error) < stop_thresh):
+            break
+        # delta_joint = pseudo inverse of jacobian * delta end effector error
+        tmp_q, success = leastsq(residual_func, tmp_q, args=(target_pose, base_pos))
 
     # TODO: update tmp_q
     # tmp_q = ? # may be more than one line
@@ -84,7 +108,7 @@ def your_ik(robot_id, new_pose : list or tuple or np.ndarray,
 
     ###################
     
-    raise NotImplementedError
+    # raise NotImplementedError
 
     return list(tmp_q) # 6 DoF
 
@@ -252,5 +276,12 @@ def main(args):
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--visualize-pose', '-vp', action='store_true', default=False, help='whether show the poses of end effector')
+    parser.add_argument('--method', '-m', type=str, default='pinv', choices=['pinv', 'DLS'], help='which method to use for inverse kinematics')
     args = parser.parse_args()
+    start = time.time()
     main(args)
+    end = time.time()
+    if args.method == 'pinv':
+        print(f"Elapsed time for Pseudo-Inverse Method : {end - start} secs")
+    elif args.method == 'DLS':
+        print(f"Elapsed time for Damped Least Square Method : {end - start} secs")

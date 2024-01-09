@@ -40,7 +40,7 @@ def get_ur5_DH_params():
     return dh_params
 
 def your_fk(DH_params : dict, q : list or tuple or np.ndarray, base_pos) -> np.ndarray:
-
+    # FK: Need to know the joint angles of the robot and the base position of the robot
     # robot initial position
     base_pose = list(base_pos) + [0, 0, 0]  
 
@@ -58,12 +58,38 @@ def your_fk(DH_params : dict, q : list or tuple or np.ndarray, base_pos) -> np.n
     # -------------------------------------------------------------------------------- #
     
     #### your code ####
+    # get transformation matrix
+    cumulative_T_list = []
+    cumulative_T = np.eye(4)
+    for i in range(len(DH_params)):
+        theta = q[i]
+        a = DH_params[i]['a']
+        d = DH_params[i]['d']
+        alpha = DH_params[i]['alpha']
+        # current transformation matrix
+        T = np.array([
+            [np.cos(theta), -np.sin(theta)*np.cos(alpha), np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
+            [np.sin(theta), np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
+            [0, np.sin(alpha), np.cos(alpha), d],
+            [0, 0, 0, 1] 
+        ])
+        
+        cumulative_T_list.append(cumulative_T)
+        cumulative_T = cumulative_T @ T
+    A = A @ cumulative_T
     
-
+    # Get Jacobian
+    # ith column of the Jacobian matrix means the contribution of the ith joint to the end effector
+    for i in range(len(DH_params)):
+        # update the Jacobain matrix
+        joint_z = cumulative_T_list[i][:3, 2]
+        joint_pose = cumulative_T[:3, 3] - cumulative_T_list[i][:3, 3]
+        jacobian[:, i] = np.concatenate((cross(joint_z, joint_pose), joint_z), axis=0)
+    
     # A = ? # may be more than one line
     # jacobian = ? # may be more than one line
 
-    raise NotImplementedError
+    # raise NotImplementedError
     # hint : 
     # https://automaticaddison.com/the-ultimate-guide-to-jacobian-matrices-for-robotics/
     
@@ -112,7 +138,6 @@ def score_fk(robot, testcase_files : str, visualize : bool=False):
         cases_num = len(fk_dict['joint_poses'])
 
         penalty = (TASK1_SCORE_MAX / testcase_file_num) / (0.3 * cases_num)
-
         for i in range(cases_num):
             your_pose, your_jacobian = your_fk(dh_params, joint_poses[i], robot._base_position)
             gt_pose = poses[i]
